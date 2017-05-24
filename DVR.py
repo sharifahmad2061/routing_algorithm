@@ -4,6 +4,7 @@ import socket
 from threading import Thread, Lock
 import time
 import pickle
+import math
 
 
 # global objects
@@ -21,10 +22,16 @@ READ_CONFIG_COMP = False
 #       structure of neighbor
 #           router_id , cost , port
 
+#       direct neighbors are added
+#       to destinations array during
+#       the initial file reading
+
 DATA = {"router_id": "None",
         "port_no": "None",
+        "destinations": [],
         "neighbor": [],
         "distance_vec": [],
+        "n_d_vec": {},
         "forw_table": []
        }
 
@@ -37,13 +44,54 @@ def current_time():
     return time.time()
 
 
-def bellman_ford(distance_vector):
-    
+def identify_remote_router(remote_address):
+    """
+    identify the id of the remote router
+    address and return it's id
+    """
+    global DATA
+    port = remote_address[1]
+    for every_router in DATA["neighbor"]:
+        if every_router[2] is port:
+            return every_router[0]
+
+
+def distance_of_x_to_y(start_node,end_node):
+    pass
+
+
+def bellman_ford(router_id, distance_vector):
+    """
+    bellman ford algorithm is run on the recieved
+    distance vector forwarding table is populated
+    """
+    global DATA
+    # initially add new destinations to
+    #  destinations array
+    for every_dest in distance_vector:
+        if every_dest[0] in  DATA["destinations"]:
+            continue
+        else:
+            DATA["destinations"].append(every_dest[0])
+
+    # then loop over all destinations and check
+    # if it's a direct neighbor then leave it
+    # else find the minimum distance to it
+    # via bellman ford
+    all_neighbor_ids = [neighbor[0] for neighbor in DATA["neighbors"]]
+    for every_dest in DATA["destinations"]:
+        if every_dest in all_neighbor_ids:
+            continue
+        else:
+            DATA["distance_vec"].append([every_dest, math.inf])
+
+    # now calculate min cost via bellman ford
+    distance_of_x_to_y()
     return
 
 
-def parse_dvec(distance_vector):
-    return
+# def parse_dvec(distance_vector):
+#     return
 
 
 # reading thread for recieving incoming distance vector
@@ -51,9 +99,11 @@ def parse_dvec(distance_vector):
 
 
 def reading():
-    """this is for reading incoming data and\
+    """this is for reading incoming data and\)
     alive messages and responding to them"""
-
+    global SOCKET1
+    global PRINT_LOCK
+    global DATA
     while True:
         msg, remote = SOCKET1.recvfrom(512)
         msg = pickle.loads(msg)
@@ -63,7 +113,16 @@ def reading():
             SOCKET1.sendto(send_msg, remote)
 
         else:
-
+            # find who the remote sender is and
+            # pass information to the bellman ford algorithm
+            remote_router_id = identify_remote_router(remote)
+            # when we receive a distance vector
+            # it means there is some change in
+            # it therefore we don't need to check
+            # if there is any change or not and
+            # hence assign it directly
+            DATA["n_d_vec"][remote_router_id] = msg
+            bellman_ford(remote_router_id, msg)
         with PRINT_LOCK:
             print(msg.decode("utf-8"))
 
