@@ -1,13 +1,16 @@
 # Routing_algorithm
-This is a python project for implementing a routing protocol with bellman ford (distance vector) algorithm using socket and multithreaded programming.
+This is a python project for implementing a routing protocol with bellman ford
+(distance vector) algorithm using socket and multithreaded programming.
 
 # Project distribution
-- [Asad Nawaz](github.com/asadnawaz126)
+- [Asad Nawaz](https://github.com/asadnawaz126)
 
-    Project research and design is part of Asad. He has to study and know about the nitty gritty of bellman ford algorithm and get an understanding of the said algorithm.
-- [Sharif Ahmad](github.com/sharifahmad2061)
+    Project research and design is part of Asad. He has to study and know about
+    the nitty gritty of bellman ford algorithm and get an understanding of the said algorithm.
+- [Sharif Ahmad](https://github.com/sharifahmad2061)
 
-    Project implementation is part of Sharif where he has to implement the protocol using socket and multi threaded programming in python.
+    Project implementation is part of Sharif where he has to implement the
+    protocol using socket and multi threaded programming in python.
 
 # Project specification
 
@@ -33,7 +36,10 @@ space separated list of
 
 # Project milestones
 
-- [ ] study socket programming
-- [ ] study multi threaded programming
-- [ ] study bellman ford algorithm
-- [ ] implement the protocol
+- [x] study socket programming
+
+- [x] study multi threaded programming
+
+- [x] study bellman ford algorithm
+
+- [x] implement the protocol
