@@ -75,28 +75,40 @@ def distance_of_x_to_y(start_node, end_node):
         neighbor[0]
         for neighbor in DATA["n_d_vec"][start_node]
     ]
-    if end_node in all_neighbor_ids:
-        return [
-            every_neighbor[1]
-            for every_neighbor in DATA["n_d_vec"][start_node]
-            if end_node is every_neighbor[0]
-        ][0]
-    else:
-        # we need to handle going back
-        # we can pass an initial router
-        # from which the algorithm has
-        # started and hence we can avoid
-        # going back
+    # if start_node is not present at that moment
+    # in n_d-vec then an exception (Type Error)
+    # will be raised after which we need to
+    # return math.inf
+    try:
+        if end_node in all_neighbor_ids:
+            return [
+                every_neighbor[1]
+                for every_neighbor in DATA["n_d_vec"][start_node]
+                if end_node is every_neighbor[0]
+            ][0]
+        else:
+            # we need to handle going back
+            # we can pass an initial router
+            # from which the algorithm has
+            # started and hence we can avoid
+            # going back
 
-        # we may do some memoization here
-        # and hence don't do reevaluation every time
-        return min(
-            [
-                distance_of_x_to_y(start_node, neighbor) +
-                distance_of_x_to_y(neighbor, end_node)
-                for neighbor in all_neighbor_ids
-            ]
-        )
+            # we may do some memoization here
+            # and hence don't do reevaluation every time
+            return min(
+                [
+                    distance_of_x_to_y(start_node, neighbor) +
+                    distance_of_x_to_y(neighbor, end_node)
+                    for neighbor in all_neighbor_ids
+                ]
+            )
+    except TypeError as node_err:
+        with PRINT_LOCK:
+            print("the start node is node is not present\
+                  at this moment in the n_d_vec \n{}"\
+                  .format(node_err)\
+                  )
+        return math.inf
 
 
 def bellman_ford(router_id, distance_vector):
@@ -223,7 +235,8 @@ def check_if_alive():
                     print("{} is dead : {}".format(every_one[0], e_ra))
                 index = DATA["neighbor"].index(every_one)
                 DATA["neighbor"].pop(index)
-                index = DATA["distance_vec"].index([every_one[0], every_one[1]])
+                index = DATA["distance_vec"].index(
+                    [every_one[0], every_one[1]])
                 DATA["distance_vec"].pop(index)
                 bellman_ford(DATA["router_id"], DATA["distance_vec"])
         # ensuring the time diff is always round about 10
@@ -291,7 +304,8 @@ def read_config_file(filename):
         while no_of_entries:
             temp_line = file.readline()
             arguments = temp_line.split(" ")
-            DATA["neighbor"].append([arguments[0], float(arguments[1]), int(arguments[2])])
+            DATA["neighbor"].append(
+                [arguments[0], float(arguments[1]), int(arguments[2])])
             no_of_entries -= 1
     # also adding base data to n_d_vec
     DATA["n_d_vec"][DATA["router_id"]] = DATA["neighbor"]
@@ -331,7 +345,6 @@ def main():
     READ_CONFIG_COMP = True
 
     initial_dvec_and_forw_insert()
-
 
     SOCKET1.bind(("", DATA["port"]))  # converts the port to a listening state
     # print(DATA['neighbor'])
