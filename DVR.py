@@ -57,97 +57,44 @@ def identify_remote_router(remote_address):
             return every_router[0]
 
 
-def distance_of_x_to_y(start_node, end_node):
-    """this function finds the min cost"""
-
-    # adding the base router's d_vec to n_d_vec
-    # will simplify the problem and we can then
-    # remove the first conditional statement
-
-    # when a router comes back to its parent
-    # its distance will ultimately increase
-    # and hence that branch will be ignored
-
+def prepare_for_bf(router_id, distance_vector):
+    """
+    this function prepares data for bellman
+    ford and then calls it. it's a helper function
+    """
     global DATA
 
-    # neighbor ids will now change for every router
-    all_neighbor_ids = [
-        neighbor[0]
-        for neighbor in DATA["n_d_vec"][start_node]
-    ]
-    # if start_node is not present at that moment
-    # in n_d-vec then an exception (Type Error)
-    # will be raised after which we need to
-    # return math.inf
-    try:
-        if end_node in all_neighbor_ids:
-            return [
-                every_neighbor[1]
-                for every_neighbor in DATA["n_d_vec"][start_node]
-                if end_node is every_neighbor[0]
-            ][0]
-        else:
-            # we need to handle going back
-            # we can pass an initial router
-            # from which the algorithm has
-            # started and hence we can avoid
-            # going back
+    # populate destination
+    vertices = DATA["destinations"]
+    for item in distance_vector:
+        if item[0] not in vertices:
+            vertices.append(item[0])
 
-            # we may do some memoization here
-            # and hence don't do reevaluation every time
-            return min(
-                [
-                    distance_of_x_to_y(start_node, neighbor) +
-                    distance_of_x_to_y(neighbor, end_node)
-                    for neighbor in all_neighbor_ids
-                ]
-            )
-    except TypeError as node_err:
-        with PRINT_LOCK:
-            print("the start node is node is not present\
-                  at this moment in the n_d_vec \n{}"\
-                  .format(node_err)\
-                  )
-        return math.inf
+    # determine edges
+    edges = {}
+    neigh_dist_vec = DATA["n_d_vec"]
+    # neigh_dist_vec is a dictionary and value below is a list
+    # we have kept two copies of each edge
+    for key, value in neigh_dist_vec.items():
+        res = {key+item[0]: item[1] for item in value}
+        edges.update(res)
+
+    # starting vertex
+    source = DATA["router_id"]
+
+    # call bellman ford now
+    bellman_ford(vertices, edges, source)
 
 
-def bellman_ford(router_id, distance_vector):
+
+
+def bellman_ford(vertices, edges, source):
     """
-    bellman ford algorithm is run on the recieved
-    distance vector forwarding table is populated
+    bellman ford algorithm is run as soon
+    as a distance vector is recieved but first
+    prepare_for_bf is called and data is prepared
+    for bellman ford algorithm
     """
-    # debug info
-    global DATA
-    with PRINT_LOCK:
-        print("bellman ford is running on receivel from {}".format(router_id))
-    # initially add new destinations to
-    #  destinations array
-    for every_dest in distance_vector:
-        if every_dest[0] in DATA["destinations"]:
-            continue
-        else:
-            DATA["destinations"].append(every_dest[0])
-
-    # then loop over all destinations and check
-    # if it's a direct neighbor then leave it
-    # else find the minimum distance to it
-    # via bellman ford
-    all_neighbor_ids = [neighbor[0] for neighbor in DATA["neighbors"]]
-    for every_dest in DATA["destinations"]:
-        if every_dest in all_neighbor_ids:
-            continue
-        # this dest is already present in distance
-        # vector with some weight then we don't
-        # need to change it to math.inf
-        elif every_dest in [dest[0] for dest in DATA["distance_vec"]]:
-            continue
-        else:
-            DATA["distance_vec"].append([every_dest, math.inf])
-
-    # now calculate min cost to each destination
-    # in distance vector via bellman ford
-    for every_dest in DATA["distance_vec"]:
-        every_dest[1] = distance_of_x_to_y(DATA["router_id"], every_dest[0])
 
 
 # reading thread for recieving incoming distance vector
@@ -178,7 +125,7 @@ def recving():
             # if there is any change or not and
             # hence assign it directly
             DATA["n_d_vec"][remote_router_id] = msg
-            bellman_ford(remote_router_id, msg)
+            prepare_for_bf(remote_router_id, msg)
 
 
 def sending():
