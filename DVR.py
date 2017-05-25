@@ -45,6 +45,14 @@ def current_time():
     return time.time()
 
 
+def find_parent_close_to_source(direct_neighbors, dest, parents_array):
+    """finds the parent that is the direct neighbor of source"""
+    if parents_array[dest] in direct_neighbors:
+        return parents_array[dest]
+    else:
+        find_parent_close_to_source(direct_neighbors, parents_array[dest], parents_array)
+
+
 def identify_remote_router(remote_address):
     """
     identify the id of the remote router
@@ -62,7 +70,11 @@ def prepare_for_bf(router_id, distance_vector):
     this function prepares data for bellman
     ford and then calls it. it's a helper function
     """
-    global DATA
+    global DATA, PRINT_LOCK
+
+    # debug info
+    with PRINT_LOCK:
+        print("{} sent distance vector".format(router_id))
 
     # populate destination
     vertices = DATA["destinations"]
@@ -95,7 +107,32 @@ def bellman_ford(vertices, edges, source):
     prepare_for_bf is called and data is prepared
     for bellman ford algorithm
     """
+    distance = dict()
+    parent = dict()
 
+    # set distance to each vertex
+    # to infinity and its parent to None
+    for vertex in vertices:
+        distance[vertex] = math.inf
+        parent[vertex] = None
+    distance[source] = 0
+
+    # now relax edges V-1 times
+    for index in range(1, len(vertices)-1):
+        for edge, weight in edges.items():
+            if distance[edge[0]] + weight < distance[edge[1]]:
+                distance[edge[1]] = distance[edge[0]] + weight
+                parent[edge[1]] = edge[0]
+
+    # now populate forwarding table and in
+    # this process we'll need to find direct neighbors
+    destinations = DATA["destinations"]
+    forwarding_table = DATA["forw_table"]
+    direct_neighbors = [item[0] for item in DATA["neighbors"]]
+    for dest in destinations:
+        cost = distance[dest]
+        direct_parent = find_parent_close_to_source(direct_neighbors, dest, parent)
+        forwarding_table.append([dest, cost, direct_parent])
 
 # reading thread for recieving incoming distance vector
 # and alive messages
@@ -104,9 +141,8 @@ def recving():
     this is for reading incoming data and
     alive messages and responding to them
     """
-    global SOCKET1
-    global PRINT_LOCK
-    global DATA
+    global SOCKET1, PRINT_LOCK, DATA
+
     while True:
         msg, remote = SOCKET1.recvfrom(1024)
         msg = pickle.loads(msg)
@@ -128,7 +164,7 @@ def recving():
             prepare_for_bf(remote_router_id, msg)
 
 
-def sending():
+def sending_distance_vectors():
     """this func runs on a separate thread\
     and is for sending distance vectors to\
     its neihbors"""
@@ -154,9 +190,8 @@ def sending():
 
 def check_if_alive():
     """this function checks if a socket is alive or not"""
-    global SOCKET1
-    global PRINT_LOCK
-    global DATA
+    global SOCKET1, PRINT_LOCK, DATA
+
     start = current_time()
     msg = pickle.dumps("is_alive")
     while True:
@@ -185,7 +220,7 @@ def check_if_alive():
                 index = DATA["distance_vec"].index(
                     [every_one[0], every_one[1]])
                 DATA["distance_vec"].pop(index)
-                bellman_ford(DATA["router_id"], DATA["distance_vec"])
+                prepare_for_bf(DATA["router_id"], DATA["distance_vec"])
         # ensuring the time diff is always round about 10
         start = current_time()
 
@@ -199,8 +234,7 @@ def interface_thread(file_name):
     # and then run so that the file is read is
     # for initial data by the read_config_file func
     # the initial file is stored as string by read_config_file
-    global INITIAL_CONFIG_FILE
-    global READ_CONFIG_COMP
+    global INITIAL_CONFIG_FILE, READ_CONFIG_COMP
 
     if READ_CONFIG_COMP:
         start = current_time()
@@ -241,8 +275,8 @@ def interface_thread(file_name):
 
 def read_config_file(filename):
     """function for reading config files and storing neighbors data"""
-    global INITIAL_CONFIG_FILE
-    global DATA
+    global INITIAL_CONFIG_FILE, DATA
+
     with open(filename, "r") as file:
         # store the initial file and then go to start of file
         INITIAL_CONFIG_FILE = file.read()
@@ -301,7 +335,7 @@ def main():
     recv_th.start()
 
     # sending thread sends its distance vector to its direct neighbors
-    send_th = Thread(target=sending)
+    send_th = Thread(target=sending_distance_vectors)
     send_th.start()
 
     # link cost change interface thread
@@ -316,9 +350,7 @@ def main():
     # we don't need thread.join because all of our threads
     # are non daemon threads
 
-    # SOCKET1.close()
-    return
-
 
 if __name__ == "__main__":
     main()
+    SOCKET1.close()
