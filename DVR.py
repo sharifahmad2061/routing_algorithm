@@ -13,6 +13,8 @@ PRINT_LOCK = Lock()
 # each neighbor is stored as a list with router_id,cost and port
 INITIAL_CONFIG_FILE = str("")
 READ_CONFIG_COMP = False
+NO_LOOPBACK_INDEX = 1
+HAS_COME_BACK = False
 
 
 #       structure of distance vector
@@ -26,14 +28,15 @@ READ_CONFIG_COMP = False
 #       to destinations array during
 #       the initial file reading
 
-DATA = {"router_id": "None",
-        "port_no": "None",
-        "destinations": [],
-        "neighbor": [],
-        "distance_vec": [],
-        "n_d_vec": {},
-        "forw_table": []
-       }
+DATA = {
+    "router_id": "None",
+    "port_no": "None",
+    "destinations": [],
+    "neighbor": [],
+    "distance_vec": [],
+    "n_d_vec": {},
+    "forw_table": []
+}
 
 
 # sending is always done using pickle bytestream
@@ -56,8 +59,48 @@ def identify_remote_router(remote_address):
             return every_router[0]
 
 
-def distance_of_x_to_y(start_node,end_node):
-    pass
+def distance_of_x_to_y(start_node, end_node):
+    """this function finds the min cost"""
+    # we need to do something of the exception
+    # that will be raised because the base
+    # router_id is not present in n_d_vec
+
+    # adding the base router's d_vec to n_d_vec
+    # will simplify the problem and we can then
+    # remove the first conditional statement
+
+    # when a router comes back to its parent
+    # its distance will ultimately increase
+    # and hence that branch will be ignored
+
+    global DATA
+
+    # neighbor ids will now change for every router
+    all_neighbor_ids = [
+        neighbor[0]
+        for neighbor in DATA["n_d_vec"][start_node]
+    ]
+    if end_node in all_neighbor_ids:
+        return [
+            every_neighbor[1]
+            for every_neighbor in DATA["n_d_vec"][start_node]
+            if end_node is every_neighbor[0]
+        ][0]
+    else:
+        # we need to handle going back
+        # we can pass an initial router
+        # from which the algorithm has
+        # started and hence we can avoid
+        # going back
+
+
+        return min(
+            [
+                distance_of_x_to_y(start_node, neighbor) +
+                distance_of_x_to_y(neighbor, end_node)
+                for neighbor in all_neighbor_ids
+            ]
+        )
 
 
 def bellman_ford(router_id, distance_vector):
@@ -69,7 +112,7 @@ def bellman_ford(router_id, distance_vector):
     # initially add new destinations to
     #  destinations array
     for every_dest in distance_vector:
-        if every_dest[0] in  DATA["destinations"]:
+        if every_dest[0] in DATA["destinations"]:
             continue
         else:
             DATA["destinations"].append(every_dest[0])
@@ -87,17 +130,10 @@ def bellman_ford(router_id, distance_vector):
 
     # now calculate min cost via bellman ford
     distance_of_x_to_y()
-    return
-
-
-# def parse_dvec(distance_vector):
-#     return
 
 
 # reading thread for recieving incoming distance vector
 # and alive messages
-
-
 def reading():
     """this is for reading incoming data and\)
     alive messages and responding to them"""
@@ -146,8 +182,8 @@ def sending():
         else:
             data_to_send = pickle.dumps(DATA["distance_vec"])
             for every_neighbor in DATA["neighbor"]:
-                recv_address = ("127.0.0.1", every_neighbor[2])
-                SOCKET1.sendto(data_to_send, recv_address)
+                send_address = ("127.0.0.1", every_neighbor[2])
+                SOCKET1.sendto(data_to_send, send_address)
             start = current_time()
 
 
@@ -180,7 +216,8 @@ def check_if_alive():
                 # as soon as the neighbor is removed we need to
                 #  do something either call bellman ford or change
                 #  distance vector manually via a function
-        start = current_time()  # ensuring the time diff is always round about 10
+        # ensuring the time diff is always round about 10
+        start = current_time()
 
 
 def interface_thread(file_name):
@@ -212,18 +249,15 @@ def interface_thread(file_name):
                     diff = [(ind, x[1]) for ind, x in enumerate(zip(list_1, list_2))
                             if x[0] != x[1]]
                     for ind, new_str in diff:
-                        DATA["neighbor"].pop(ind-1)
+                        DATA["neighbor"].pop(ind - 1)
                         new_en = [x for x in new_str.split(" ")]
                         new_en[1] = float(new_en[1])
                         new_en[2] = int(new_en[2])
-                        DATA["neighbor"].insert(ind-1, new_en)
+                        DATA["neighbor"].insert(ind - 1, new_en)
+                    # inserting new base router data to n_d_vec
+                    DATA["n_d_vec"][DATA["router_id"]] = DATA["neighbor"]
                     INITIAL_CONFIG_FILE = temp
                     start = current_time()
-                # end else
-            # end else
-        # end while
-    # end if
-    return
 
 
 def read_config_file(filename):
@@ -240,7 +274,11 @@ def read_config_file(filename):
             arguments = temp_line.split(" ")
             DATA["neighbor"].append([arguments[0], arguments[1], arguments[2]])
             no_of_entries -= 1
-        # end of while
+
+    # also adding base data to n_d_vec
+    DATA["n_d_vec"][DATA["router_id"]] = DATA["neighbor"]
+
+    # end of while
     # end of with
 
 
@@ -255,7 +293,8 @@ def initial_dvec_and_forw_insert():
         # parent to direct neighbors is always
         #  the router itself that's why DATA["router_id"]
         #  as third argument
-        DATA["forw_table"].append([every_neighbor[0], every_neighbor[1], DATA["router_id"]])
+        DATA["forw_table"].append(
+            [every_neighbor[0], every_neighbor[1], DATA["router_id"]])
 
 
 def main():
@@ -289,7 +328,8 @@ def main():
     send_th.start()
 
     # link cost change interface thread
-    intf_th = Thread(target=interface_thread, args=(args.router_config_file, ), daemon=True)
+    intf_th = Thread(target=interface_thread, args=(
+        args.router_config_file, ), daemon=True)
     intf_th.start()
 
     # find thread is checking if every router is available/alive
