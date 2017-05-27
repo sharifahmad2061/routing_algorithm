@@ -16,11 +16,13 @@ READ_CONFIG_COMP = False
 
 
 #       structure of distance vector
-#           destination , cost
+#           destination : cost      :dictionary
 #       structure of forwarding table
-#           destination , cost , parent
+#           {destination : [cost , parent], }
 #       structure of neighbor
-#           router_id , cost , port
+#           {router_id : [cost , port], }
+# #       structure of n_d_vec
+#           router_id : [[dest , cost], ] 2d array
 
 #       direct neighbors are added
 #       to destinations array during
@@ -30,12 +32,13 @@ DATA = {
     "router_id": "None",
     "port_no": "None",
     "destinations": [],
-    "neighbor": [],
-    "distance_vec": [],
+    "neighbor": {},
+    "distance_vec": {},
     "n_d_vec": {},
-    "forw_table": []
+    "forw_table": {}
 }
-
+# look for changes in forw_table after a neighbor goes down
+# also the neighbor is removed from destinations
 
 # sending is always done using pickle bytestream
 
@@ -50,7 +53,8 @@ def find_parent_close_to_source(direct_neighbors, dest, parents_array):
     if parents_array[dest] in direct_neighbors:
         return parents_array[dest]
     else:
-        find_parent_close_to_source(direct_neighbors, parents_array[dest], parents_array)
+        find_parent_close_to_source(
+            direct_neighbors, parents_array[dest], parents_array)
 
 
 def identify_remote_router(remote_address):
@@ -58,10 +62,9 @@ def identify_remote_router(remote_address):
     identify the id of the remote router
     address and return it's id
     """
-    global DATA
     port = remote_address[1]
     for every_router in DATA["neighbor"]:
-        if every_router[2] is port:
+        if every_router[2] == port:
             return every_router[0]
 
 
@@ -70,11 +73,10 @@ def prepare_for_bf(router_id, distance_vector):
     this function prepares data for bellman
     ford and then calls it. it's a helper function
     """
-    global DATA, PRINT_LOCK
 
     # debug info
     with PRINT_LOCK:
-        print("{} sent distance vector".format(router_id))
+        print("inside prepare for bf on recieval from {}".format(router_id))
 
     # populate destination
     vertices = DATA["destinations"]
@@ -88,7 +90,10 @@ def prepare_for_bf(router_id, distance_vector):
     # neigh_dist_vec is a dictionary and value below is a list
     # we have kept two copies of each edge
     for key, value in neigh_dist_vec.items():
-        res = {key+item[0]: item[1] for item in value}
+        # value is a 2d array
+        with PRINT_LOCK:
+            print(key, '\n', value)
+        res = {key + item[0]: item[1] for item in value}
         edges.update(res)
 
     # starting vertex
@@ -96,8 +101,6 @@ def prepare_for_bf(router_id, distance_vector):
 
     # call bellman ford now
     bellman_ford(vertices, edges, source)
-
-
 
 
 def bellman_ford(vertices, edges, source):
@@ -118,7 +121,7 @@ def bellman_ford(vertices, edges, source):
     distance[source] = 0
 
     # now relax edges V-1 times
-    for index in range(1, len(vertices)-1):
+    for index in range(1, len(vertices) - 1):
         for edge, weight in edges.items():
             if distance[edge[0]] + weight < distance[edge[1]]:
                 distance[edge[1]] = distance[edge[0]] + weight
@@ -131,25 +134,38 @@ def bellman_ford(vertices, edges, source):
     direct_neighbors = [item[0] for item in DATA["neighbors"]]
     for dest in destinations:
         cost = distance[dest]
-        direct_parent = find_parent_close_to_source(direct_neighbors, dest, parent)
-        forwarding_table.append([dest, cost, direct_parent])
+        direct_parent = find_parent_close_to_source(
+            direct_neighbors, dest, parent)
+        forwarding_table[dest] = [cost, direct_parent]
 
 # reading thread for recieving incoming distance vector
 # and alive messages
+
+
 def recving():
     """
     this is for reading incoming data and
     alive messages and responding to them
     """
-    global SOCKET1, PRINT_LOCK, DATA
+    global DATA
 
     while True:
         msg, remote = SOCKET1.recvfrom(1024)
         msg = pickle.loads(msg)
 
-        if msg is "is_alive":
+        with PRINT_LOCK:
+            print("inside thread receiving")
+            print(type(msg), "\n", msg)
+
+        if msg == "is_alive":
+            with PRINT_LOCK:
+                print("is_alive message recieved from {}".format(
+                    identify_remote_router(remote)))
             send_msg = pickle.dumps("yes")
             SOCKET1.sendto(send_msg, remote)
+            with PRINT_LOCK:
+                print("response to is_alive send to {}".format(
+                    identify_remote_router(remote)))
 
         else:
             # find who the remote sender is and
@@ -161,6 +177,8 @@ def recving():
             # if there is any change or not and
             # hence assign it directly
             DATA["n_d_vec"][remote_router_id] = msg
+            with PRINT_LOCK:
+                print("distance vector recieved from {}".format(remote_router_id))
             prepare_for_bf(remote_router_id, msg)
 
 
@@ -174,7 +192,6 @@ def sending_distance_vectors():
 
     # we also need to cater for sending normal data
 
-    global DATA
     start = current_time()
     while True:
         if(current_time() - start) < 10:
@@ -185,12 +202,14 @@ def sending_distance_vectors():
             for every_neighbor in DATA["neighbor"]:
                 send_address = ("127.0.0.1", every_neighbor[2])
                 SOCKET1.sendto(data_to_send, send_address)
+                with PRINT_LOCK:
+                    print("inside sending distance vector")
+                    print("d_vec sent to {}".format(send_address))
             start = current_time()
 
 
 def check_if_alive():
     """this function checks if a socket is alive or not"""
-    global SOCKET1, PRINT_LOCK, DATA
 
     start = current_time()
     msg = pickle.dumps("is_alive")
@@ -199,28 +218,30 @@ def check_if_alive():
         if (current_time() - start) < 10:
             continue
 
-        for every_one in DATA["neighbor"]:
-            remote = ("127.0.0.1", every_one[2])
+        for key, value in DATA["neighbor"].items():
+            remote = ("127.0.0.1", value[1])
             # out of the present list
             # decrease waiting time
-            SOCKET1.settimeout(2)
             SOCKET1.sendto(msg, remote)
             try:
-                recv_msg = pickle.loads(SOCKET1.recvfrom(512)[0])
-                if recv_msg is "yes":
+                msg, remote = SOCKET1.recvfrom(1024)
+                msg = pickle.loads(msg)
+                if msg == "yes":
                     with PRINT_LOCK:
-                        print("{} is alive".format(every_one[0]))
+                        print("inside check if alive")
+                        print("{} is alive".format(key))
+                else:
+                    with PRINT_LOCK:
+                        print("something else recieved inside check if alive")
+                        print("while waiting for response from {}".format(
+                            ('127.0.0.1', key)))
             except (OSError, socket.timeout) as e_ra:
-                # reset waiting time
-                SOCKET1.settimeout(socket.getdefaulttimeout())
                 with PRINT_LOCK:
-                    print("{} is dead : {}".format(every_one[0], e_ra))
-                index = DATA["neighbor"].index(every_one)
-                DATA["neighbor"].pop(index)
-                index = DATA["distance_vec"].index(
-                    [every_one[0], every_one[1]])
-                DATA["distance_vec"].pop(index)
+                    print("{} is dead : {}".format(key, e_ra))
+                del DATA["neighbor"][key]
+                del DATA["distance_vec"][key]
                 prepare_for_bf(DATA["router_id"], DATA["distance_vec"])
+                DATA["destinations"].remove(key)
         # ensuring the time diff is always round about 10
         start = current_time()
 
@@ -234,7 +255,7 @@ def interface_thread(file_name):
     # and then run so that the file is read is
     # for initial data by the read_config_file func
     # the initial file is stored as string by read_config_file
-    global INITIAL_CONFIG_FILE, READ_CONFIG_COMP
+    global INITIAL_CONFIG_FILE
 
     if READ_CONFIG_COMP:
         start = current_time()
@@ -250,25 +271,29 @@ def interface_thread(file_name):
                     start = current_time()
                     continue
                 else:
+                    with PRINT_LOCK:
+                        print("{}'s file changed".format(DATA["router_id"]))
                     list_1 = INITIAL_CONFIG_FILE.split("\n")
                     list_2 = temp.split("\n")
                     # first line that's no. of lines is never changed
                     diff = [
-                        (ind, x[1])
-                        for ind, x in enumerate(zip(list_1, list_2))
-                        if x[0] != x[1]
+                        y
+                        for x, y in zip(list_1, list_2)
+                        if x != y
                     ]
-                    for ind, new_str in diff:
+                    for new_str in diff:
                         # we use ind - 1 because list is unordered
                         # and line no. is not included here hence
                         # index is 1 less
-                        DATA["neighbor"].pop(ind - 1)
                         new_en = [x for x in new_str.split(" ")]
-                        new_en[1] = float(new_en[1])
-                        new_en[2] = int(new_en[2])
-                        DATA["neighbor"].insert(ind - 1, new_en)
-                    # inserting new base router data to n_d_vec
+                        cost = new_en[1] = float(new_en[1])
+                        port = new_en[2] = int(new_en[2])
+                        router_id = new_en[0]
+                        DATA["neighbor"][router_id] = [cost, port]
+                    # changing n_d_vec and distance_vec
                     DATA["n_d_vec"][DATA["router_id"]] = DATA["neighbor"]
+                    for key, value in DATA["neighbor"].items():
+                        DATA["distance_vec"][key] = value[0]
                     INITIAL_CONFIG_FILE = temp
                     start = current_time()
 
@@ -276,7 +301,7 @@ def interface_thread(file_name):
 def read_config_file(filename):
     """function for reading config files and storing neighbors data"""
     global INITIAL_CONFIG_FILE, DATA
-
+    neighbors = DATA["neighbor"]
     with open(filename, "r") as file:
         # store the initial file and then go to start of file
         INITIAL_CONFIG_FILE = file.read()
@@ -285,8 +310,7 @@ def read_config_file(filename):
         while no_of_entries:
             temp_line = file.readline()
             arguments = temp_line.split(" ")
-            DATA["neighbor"].append(
-                [arguments[0], float(arguments[1]), int(arguments[2])])
+            neighbors[arguments[0]] = [float(arguments[1]), int(arguments[2])]
             no_of_entries -= 1
     # also adding base data to n_d_vec
     DATA["n_d_vec"][DATA["router_id"]] = DATA["neighbor"]
@@ -298,13 +322,14 @@ def initial_dvec_and_forw_insert():
     and forwarding table
     """
     global DATA
-    for every_neighbor in DATA["neighbor"]:
-        DATA["distanc_vec"].append([every_neighbor[0], every_neighbor[1]])
+    d_vec = DATA["distance_vec"]
+    for key, value in DATA["neighbor"].items():
+        d_vec[key] = value[0]
         # parent to direct neighbors is always
         #  the router itself that's why DATA["router_id"]
         #  as third argument
-        DATA["forw_table"].append(
-            [every_neighbor[0], every_neighbor[1], DATA["router_id"]])
+        forw_table = DATA["forw_table"]
+        forw_table[key] = [value[0], DATA["router_id"]]
 
 
 def main():
@@ -318,7 +343,8 @@ def main():
     args = parser.parse_args()
     DATA["port"] = args.port_no
     DATA["router_id"] = args.router_id
-    read_config_file(args.router_config_file)
+    filename = "test\\" + args.router_config_file
+    read_config_file(filename)
 
     # after the read_config_file func completes we set a variable
     # saying that neighbor data is ready
@@ -331,20 +357,20 @@ def main():
     # print(DATA['neighbor'])
 
     # read thread is listening for incoming messages
-    recv_th = Thread(target=recving)
+    recv_th = Thread(target=recving, name="recv_th")
     recv_th.start()
 
     # sending thread sends its distance vector to its direct neighbors
-    send_th = Thread(target=sending_distance_vectors)
+    send_th = Thread(target=sending_distance_vectors, name="send_th")
     send_th.start()
 
     # link cost change interface thread
-    intf_th = Thread(target=interface_thread, args=(
-        args.router_config_file, ), daemon=True)
+    intf_th = Thread(target=interface_thread, name="intf_th", args=(
+        filename, ), daemon=True)
     intf_th.start()
 
     # find thread is checking if every router is available/alive
-    find_th = Thread(target=check_if_alive, daemon=True)
+    find_th = Thread(target=check_if_alive, name="find_th", daemon=True)
     find_th.start()
 
     # we don't need thread.join because all of our threads
@@ -353,4 +379,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    SOCKET1.close()
+    # SOCKET1.close()
