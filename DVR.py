@@ -5,11 +5,17 @@ from threading import Thread, Lock
 import time
 import pickle
 import math
+from queue import Queue
 
+# we don't send distance vectors every 10
+# seconds rather send is_alive messagse
+# cater for changed distance vectors
 
 # global objects
 SOCKET1 = socket.socket(type=socket.SOCK_DGRAM)
 PRINT_LOCK = Lock()
+ALIVE_MSG_QUEUE = Queue(10)
+# DIS_VEC_QUEUE = Queue(10)
 # each neighbor is stored as a list with router_id,cost and port
 INITIAL_CONFIG_FILE = str("")
 READ_CONFIG_COMP = False
@@ -63,9 +69,9 @@ def identify_remote_router(remote_address):
     address and return it's id
     """
     port = remote_address[1]
-    for every_router in DATA["neighbor"]:
-        if every_router[2] == port:
-            return every_router[0]
+    for key, value in DATA["neighbor"].items():
+        if value[1] == port:
+            return key
 
 
 def prepare_for_bf(router_id, distance_vector):
@@ -80,9 +86,9 @@ def prepare_for_bf(router_id, distance_vector):
 
     # populate destination
     vertices = DATA["destinations"]
-    for item in distance_vector:
-        if item[0] not in vertices:
-            vertices.append(item[0])
+    for item in distance_vector.keys():
+        if item not in vertices:
+            vertices.append(item)
 
     # determine edges
     edges = {}
@@ -92,10 +98,11 @@ def prepare_for_bf(router_id, distance_vector):
     for key, value in neigh_dist_vec.items():
         # value is a 2d array
         with PRINT_LOCK:
-            print(key, '\n', value)
-        res = {key + item[0]: item[1] for item in value}
+            print("prepare", key, '\n', value)
+        res = {key + local_key: item[0] for local_key, item in value.items()}
         edges.update(res)
-
+    with PRINT_LOCK:
+        print("printing edges", edges)
     # starting vertex
     source = DATA["router_id"]
 
@@ -147,7 +154,8 @@ def recving():
     this is for reading incoming data and
     alive messages and responding to them
     """
-    global DATA
+    # is alive message is responded to in place here
+    global DATA, ALIVE_MSG_QUEUE
 
     while True:
         msg, remote = SOCKET1.recvfrom(1024)
@@ -161,11 +169,14 @@ def recving():
             with PRINT_LOCK:
                 print("is_alive message recieved from {}".format(
                     identify_remote_router(remote)))
-            send_msg = pickle.dumps("yes")
+            send_msg = pickle.dumps("yes" + str(DATA["port"]))
             SOCKET1.sendto(send_msg, remote)
             with PRINT_LOCK:
                 print("response to is_alive send to {}".format(
                     identify_remote_router(remote)))
+
+        elif msg.split(" ")[0] == "yes":
+            ALIVE_MSG_QUEUE.put_nowait(msg)
 
         else:
             # find who the remote sender is and
@@ -178,7 +189,9 @@ def recving():
             # hence assign it directly
             DATA["n_d_vec"][remote_router_id] = msg
             with PRINT_LOCK:
-                print("distance vector recieved from {}".format(remote_router_id))
+                print("distance vector recieved from {} and is : ".format(
+                    remote_router_id))
+                print(msg)
             prepare_for_bf(remote_router_id, msg)
 
 
@@ -199,8 +212,8 @@ def sending_distance_vectors():
             continue
         else:
             data_to_send = pickle.dumps(DATA["distance_vec"])
-            for every_neighbor in DATA["neighbor"]:
-                send_address = ("127.0.0.1", every_neighbor[2])
+            for value in DATA["neighbor"].values():
+                send_address = ("127.0.0.1", value[1])
                 SOCKET1.sendto(data_to_send, send_address)
                 with PRINT_LOCK:
                     print("inside sending distance vector")
@@ -210,9 +223,9 @@ def sending_distance_vectors():
 
 def check_if_alive():
     """this function checks if a socket is alive or not"""
-
+    # for identifying different alive messages responses we use port with message
+    global ALIVE_MSG_QUEUE
     start = current_time()
-    msg = pickle.dumps("is_alive")
     while True:
 
         if (current_time() - start) < 10:
@@ -220,9 +233,10 @@ def check_if_alive():
 
         for key, value in DATA["neighbor"].items():
             remote = ("127.0.0.1", value[1])
-            # out of the present list
-            # decrease waiting time
+            msg = pickle.dumps("is_alive" + str(value[1]))
             SOCKET1.sendto(msg, remote)
+            with PRINT_LOCK:
+                print("is_alive message sent to {}".format(remote))
             try:
                 msg, remote = SOCKET1.recvfrom(1024)
                 msg = pickle.loads(msg)
@@ -355,23 +369,30 @@ def main():
 
     SOCKET1.bind(("", DATA["port"]))  # converts the port to a listening state
     # print(DATA['neighbor'])
-
     # read thread is listening for incoming messages
     recv_th = Thread(target=recving, name="recv_th")
     recv_th.start()
+    with PRINT_LOCK:
+        print("read thread started")
 
     # sending thread sends its distance vector to its direct neighbors
     send_th = Thread(target=sending_distance_vectors, name="send_th")
     send_th.start()
+    with PRINT_LOCK:
+        print("send thread started")
 
     # link cost change interface thread
     intf_th = Thread(target=interface_thread, name="intf_th", args=(
         filename, ), daemon=True)
     intf_th.start()
+    with PRINT_LOCK:
+        print("intf thread started")
 
     # find thread is checking if every router is available/alive
     find_th = Thread(target=check_if_alive, name="find_th", daemon=True)
     find_th.start()
+    with PRINT_LOCK:
+        print("find thread started")
 
     # we don't need thread.join because all of our threads
     # are non daemon threads
