@@ -5,7 +5,7 @@ from threading import Thread, Lock
 import time
 import pickle
 import math
-from queue import Queue
+from queue import Queue, Empty
 
 # we don't send distance vectors every 10
 # seconds rather send is_alive messagse
@@ -238,24 +238,27 @@ def check_if_alive():
             with PRINT_LOCK:
                 print("is_alive message sent to {}".format(remote))
             try:
-                msg, remote = SOCKET1.recvfrom(1024)
-                msg = pickle.loads(msg)
-                if msg == "yes":
-                    with PRINT_LOCK:
-                        print("inside check if alive")
-                        print("{} is alive".format(key))
+                rcvd_msg = ALIVE_MSG_QUEUE.get(True, 2)
+                if rcvd_msg.split(" ")[1] == remote[1]:
+                    print("{} is alive".format(remote))
                 else:
-                    with PRINT_LOCK:
-                        print("something else recieved inside check if alive")
-                        print("while waiting for response from {}".format(
-                            ('127.0.0.1', key)))
-            except (OSError, socket.timeout) as e_ra:
-                with PRINT_LOCK:
-                    print("{} is dead : {}".format(key, e_ra))
+                    print("out of order msg received")
+            except Empty as qu_em:
+                print("no response to is_alive received from {} : {}".format(remote, qu_em))
                 del DATA["neighbor"][key]
                 del DATA["distance_vec"][key]
-                prepare_for_bf(DATA["router_id"], DATA["distance_vec"])
                 DATA["destinations"].remove(key)
+                del DATA["n_d_vec"][key]
+                del DATA["forw_table"][key]
+                # because our neighbor has gone down we have
+                # to do something of sending new distance vec
+            # except (OSError, socket.timeout) as e_ra:
+            #     with PRINT_LOCK:
+            #         print("{} is dead : {}".format(key, e_ra))
+            #     del DATA["neighbor"][key]
+            #     del DATA["distance_vec"][key]
+            #     prepare_for_bf(DATA["router_id"], DATA["distance_vec"])
+            #     DATA["destinations"].remove(key)
         # ensuring the time diff is always round about 10
         start = current_time()
 
