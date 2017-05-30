@@ -56,14 +56,16 @@ def current_time():
 
 def find_parent_close_to_source(direct_neighbors, dest, parents_array):
     """finds the parent that is the direct neighbor of source"""
-    with PRINT_LOCK:
-        print("direct neighbors: \n", direct_neighbors)
-        print("dest: \n", dest)
-        print("parent array: \n", parents_array)
-        print(dest in direct_neighbors)
+    PRINT_LOCK.acquire()
+    print("direct neighbors: \n", direct_neighbors)
+    print("dest: \n", dest)
+    print("parent array: \n", parents_array)
+    print(dest in direct_neighbors)
+    PRINT_LOCK.release()
     if dest in direct_neighbors:
-        with PRINT_LOCK:
-            print("true has happened")
+        PRINT_LOCK.acquire()
+        print("true has happened")
+        PRINT_LOCK.release()
         return parents_array[dest]
     elif parents_array[dest] in direct_neighbors:
         return parents_array[dest]
@@ -90,8 +92,9 @@ def prepare_for_bf(router_id, distance_vector):
     """
 
     # debug info
-    with PRINT_LOCK:
-        print("inside prepare for bf on recieval from {}".format(router_id))
+    PRINT_LOCK.acquire()
+    print("inside prepare for bf on recieval from {}".format(router_id))
+    PRINT_LOCK.release()
 
     # populate destination
     vertices = DATA["destinations"]
@@ -106,12 +109,14 @@ def prepare_for_bf(router_id, distance_vector):
     # we have kept two copies of each edge
     for key, value in neigh_dist_vec.items():
         # value is a 2d array
-        with PRINT_LOCK:
-            print("prepare", key, '\n', value)
+        PRINT_LOCK.acquire()
+        print("prepare", key, '\n', value)
+        PRINT_LOCK.release()
         res = {key + local_key: local_value for local_key, local_value in value.items()}
         edges.update(res)
-    with PRINT_LOCK:
-        print("printing edges", edges)
+    PRINT_LOCK.acquire()
+    print("printing edges", edges)
+    PRINT_LOCK.release()
     # starting vertex
     source = DATA["router_id"]
 
@@ -137,11 +142,13 @@ def bellman_ford(vertices, edges, source):
 
     # now relax edges V-1 times
     for index in range(1, len(vertices)):
-        with PRINT_LOCK:
-            print(index)
+        PRINT_LOCK.acquire()
+        print(index)
+        PRINT_LOCK.release()
         for edge, weight in edges.items():
-            with PRINT_LOCK:
-                print(edge, weight)
+            PRINT_LOCK.acquire()
+            print(edge, weight)
+            PRINT_LOCK.release()
             if distance[edge[0]] + weight < distance[edge[1]]:
                 distance[edge[1]] = distance[edge[0]] + weight
                 parent[edge[1]] = edge[0]
@@ -153,14 +160,16 @@ def bellman_ford(vertices, edges, source):
     forwarding_table = DATA["forw_table"]
     direct_neighbors = list(DATA["neighbor"].keys())
     for dest in direct_neighbors:
-        with PRINT_LOCK:
-            print("called with {}".format(dest))
+        PRINT_LOCK.acquire()
+        print("called with {}".format(dest))
+        PRINT_LOCK.release()
         cost = distance[dest]
         direct_parent = find_parent_close_to_source(
             direct_neighbors, dest, parent)
         forwarding_table[dest] = [cost, direct_parent]
-    with PRINT_LOCK:
-        print(forwarding_table)
+    PRINT_LOCK.acquire()
+    print(forwarding_table)
+    PRINT_LOCK.release()
 # reading thread for recieving incoming distance vector
 # and alive messages
 
@@ -177,19 +186,22 @@ def recving():
         msg, remote = SOCKET1.recvfrom(1024)
         msg = pickle.loads(msg)
 
-        with PRINT_LOCK:
-            print("inside thread receiving")
-            print(type(msg), "\n", msg)
+        PRINT_LOCK.acquire()
+        print("inside thread receiving")
+        print(type(msg), "\n", msg)
+        PRINT_LOCK.release()
 
         if msg == "is_alive":
-            with PRINT_LOCK:
-                print("is_alive message recieved from {}".format(
-                    identify_remote_router(remote)))
+            PRINT_LOCK.acquire()
+            print("is_alive message recieved from {}".format(
+                identify_remote_router(remote)))
+            PRINT_LOCK.release()
             send_msg = pickle.dumps("yes " + str(DATA["port"]))
             SOCKET1.sendto(send_msg, remote)
-            with PRINT_LOCK:
-                print("response to is_alive send to {}".format(
-                    identify_remote_router(remote)))
+            PRINT_LOCK.acquire()
+            print("response to is_alive send to {}".format(
+                identify_remote_router(remote)))
+            PRINT_LOCK.release()
 
         elif isinstance(msg, str):
             ALIVE_MSG_QUEUE.put_nowait(msg)
@@ -207,12 +219,21 @@ def recving():
             # i've to do comparison here if the new distance vector
             # is different from previous one then call bellman ford
             # with it else ignore it
-            DATA["n_d_vec"][remote_router_id] = msg
-            with PRINT_LOCK:
+            # upon initial receive the value will be none hence
+            # will branch to else
+            if DATA["n_d_vec"].get(remote_router_id) == msg:
+                PRINT_LOCK.acquire()
+                print("distance vector is same")
+                PRINT_LOCK.release()
+                continue
+            else:
+                DATA["n_d_vec"][remote_router_id] = msg
+                PRINT_LOCK.acquire()
                 print("distance vector recieved from {} and is : ".format(
                     remote_router_id))
                 print(msg)
-            prepare_for_bf(remote_router_id, msg)
+                PRINT_LOCK.release()
+                prepare_for_bf(remote_router_id, msg)
 
 
 def sending_distance_vectors():
@@ -235,9 +256,10 @@ def sending_distance_vectors():
             for value in DATA["neighbor"].values():
                 send_address = ("127.0.0.1", value[1])
                 SOCKET1.sendto(data_to_send, send_address)
-                with PRINT_LOCK:
-                    print("inside sending distance vector")
-                    print("d_vec sent to {}".format(send_address))
+                PRINT_LOCK.acquire()
+                print("inside sending distance vector")
+                print("d_vec sent to {}".format(send_address))
+                PRINT_LOCK.release()
             start = current_time()
 
 
@@ -255,21 +277,26 @@ def check_if_alive():
             remote = ("127.0.0.1", value[1])
             msg = pickle.dumps("is_alive")
             SOCKET1.sendto(msg, remote)
-            with PRINT_LOCK:
-                print("is_alive message sent to {}".format(remote))
+            PRINT_LOCK.acquire()
+            print("is_alive message sent to {}".format(remote))
+            PRINT_LOCK.release()
             try:
                 rcvd_msg = ALIVE_MSG_QUEUE.get(True, 2)
-                with PRINT_LOCK:
-                    print(rcvd_msg)
+                PRINT_LOCK.acquire()
+                print(rcvd_msg)
+                PRINT_LOCK.release()
                 if int(rcvd_msg.split(" ")[1]) == remote[1]:
-                    with PRINT_LOCK:
-                        print("{} is alive".format(remote))
+                    PRINT_LOCK.acquire()
+                    print("{} is alive".format(remote))
+                    PRINT_LOCK.release()
                 else:
-                    with PRINT_LOCK:
-                        print("out of order msg received")
+                    PRINT_LOCK.acquire()
+                    print("out of order msg received")
+                    PRINT_LOCK.release()
             except Empty as qu_em:
-                with PRINT_LOCK:
-                    print("no response to is_alive received from {} : {}".format(remote, qu_em))
+                PRINT_LOCK.acquire()
+                print("no response to is_alive received from {} : {}".format(remote, qu_em))
+                PRINT_LOCK.release()
                 del DATA["neighbor"][key]
                 del DATA["distance_vec"][key]
                 DATA["destinations"].remove(key)
@@ -306,8 +333,9 @@ def interface_thread(file_name):
                     start = current_time()
                     continue
                 else:
-                    with PRINT_LOCK:
-                        print("{}'s file changed".format(DATA["router_id"]))
+                    PRINT_LOCK.acquire()
+                    print("{}'s file changed".format(DATA["router_id"]))
+                    PRINT_LOCK.release()
                     list_1 = INITIAL_CONFIG_FILE.split("\n")
                     list_2 = temp.split("\n")
                     # first line that's no. of lines is never changed
@@ -395,34 +423,39 @@ def main():
     # read thread is listening for incoming messages
     recv_th = Thread(target=recving, name="recv_th")
     recv_th.start()
-    with PRINT_LOCK:
-        print("read thread started")
+    PRINT_LOCK.acquire()
+    print("read thread started")
+    PRINT_LOCK.release()
 
     # sending thread sends its distance vector to its direct neighbors
     send_th = Thread(target=sending_distance_vectors, name="send_th")
     send_th.start()
-    with PRINT_LOCK:
-        print("send thread started")
+    PRINT_LOCK.acquire()
+    print("send thread started")
+    PRINT_LOCK.release()
 
     # link cost change interface thread
     intf_th = Thread(target=interface_thread, name="intf_th", args=(
         filename, ), daemon=True)
     intf_th.start()
-    with PRINT_LOCK:
-        print("intf thread started")
+    PRINT_LOCK.acquire()
+    print("intf thread started")
+    PRINT_LOCK.release()
 
     # find thread is checking if every router is available/alive
     find_th = Thread(target=check_if_alive, name="find_th", daemon=True)
     find_th.start()
-    with PRINT_LOCK:
-        print("find thread started")
+    PRINT_LOCK.acquire()
+    print("find thread started")
+    PRINT_LOCK.release()
 
     prnt_time = current_time()
     while True:
         if current_time() - prnt_time > 300:
-            with PRINT_LOCK:
-                print("300 sec happened")
-                print(DATA["forw_table"])
+            PRINT_LOCK.acquire()
+            print("300 sec happened")
+            print(DATA["forw_table"])
+            PRINT_LOCK.release()
     # we don't need thread.join because all of our threads
     # are non daemon threads
 
