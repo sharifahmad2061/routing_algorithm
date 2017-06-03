@@ -235,13 +235,11 @@ def sending_distance_vectors():
         else:
             with PRINT_LOCK:
                 print("inside sending distance vector")
-                print(DATA["neighbor"])
+                print("neighbores : {}".format(DATA["neighbor"]))
             data_to_send = pickle.dumps(DATA["distance_vec"])
             for value in DATA["neighbor"].values():
                 send_address = ("127.0.0.1", value[1])
                 SOCKET1.sendto(data_to_send, send_address)
-                with PRINT_LOCK:
-                    print("d_vec sent to {}".format(send_address))
             interval = interval + 10 if interval < 60 else interval
             start = current_time()
 
@@ -262,31 +260,26 @@ def check_if_alive():
             remote = ("127.0.0.1", value[1])
             msg = pickle.dumps("is_alive")
             SOCKET1.sendto(msg, remote)
-            PRINT_LOCK.acquire()
-            print("is_alive message sent to {}".format(remote))
-            PRINT_LOCK.release()
+            with PRINT_LOCK:
+                print("is_alive message sent to {}".format(remote))
             try:
                 rcvd_msg = ALIVE_MSG_QUEUE.get(True, 2)
-                PRINT_LOCK.acquire()
-                print(rcvd_msg)
-                PRINT_LOCK.release()
                 if int(rcvd_msg.split(" ")[1]) == remote[1]:
-                    PRINT_LOCK.acquire()
-                    print("{} is alive".format(remote))
-                    PRINT_LOCK.release()
+                    with PRINT_LOCK:
+                        print("{} is alive".format(remote))
                 else:
-                    PRINT_LOCK.acquire()
-                    print("out of order msg received")
-                    PRINT_LOCK.release()
+                    with PRINT_LOCK:
+                        print("out of order msg received")
             except Empty as qu_em:
-                PRINT_LOCK.acquire()
-                print("no response to is_alive received from {} : {}".format(remote, qu_em))
-                PRINT_LOCK.release()
+                with PRINT_LOCK:
+                    print("no response to is_alive received from {} : {}".format(remote, qu_em))
                 neighbors_gone_dead.append(key)
 
         # because our neighbor has gone down we have
         # to do something of sending new distance vec
-        print("before deleting : {}".format(DATA["neighbor"]))
+        with PRINT_LOCK:
+            print("before deleting : {}".format(DATA["neighbor"]))
+            print("dead : {}".format(neighbors_gone_dead))
         for dead in neighbors_gone_dead:
             del DATA["neighbor"][dead]
             del DATA["distance_vec"][dead]
