@@ -250,7 +250,7 @@ def check_if_alive():
     # I need to make timeout variable
     global ALIVE_MSG_QUEUE
     neighbors_gone_dead = list()
-    interval = 0
+    interval = 10
     start = current_time()
     while True:
 
