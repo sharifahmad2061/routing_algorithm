@@ -250,10 +250,11 @@ def check_if_alive():
     # I need to make timeout variable
     global ALIVE_MSG_QUEUE
     neighbors_gone_dead = list()
+    interval = 0
     start = current_time()
     while True:
 
-        if (current_time() - start) < 10:
+        if (current_time() - start) < interval:
             continue
 
         for key, value in DATA["neighbor"].items():
@@ -286,8 +287,10 @@ def check_if_alive():
             DATA["destinations"].remove(dead)
             del DATA["n_d_vec"][dead]
             del DATA["forw_table"][dead]
+        neighbors_gone_dead = list()
 
         # ensuring the time diff is always round about 10
+        interval = interval + 10 if interval < 30 else interval
         start = current_time()
 
 
