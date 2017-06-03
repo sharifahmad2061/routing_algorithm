@@ -132,10 +132,6 @@ def prepare_for_bf(router_id, distance_vector):
     ford and then calls it. it's a helper function
     """
 
-    # debug info
-    with PRINT_LOCK:
-        print("inside prepare for bf on recieval from {}".format(router_id))
-
     # populate destination
     vertices = DATA["destinations"]
     for item in distance_vector.keys():
@@ -146,15 +142,13 @@ def prepare_for_bf(router_id, distance_vector):
     edges = {}
     neigh_dist_vec = DATA["n_d_vec"]
     # neigh_dist_vec is a dictionary and value below is a list
-    # we have kept two copies of each edge
+    # we get two copies of each edge (unidirectional)
     for key, value in neigh_dist_vec.items():
-        # value is a 2d array
         with PRINT_LOCK:
-            print("prepare", key, '\n', value)
+            print("printing n_d_vec", key, value)
+        # value is a 2d array
         res = {key + local_key: local_value for local_key, local_value in value.items()}
         edges.update(res)
-    with PRINT_LOCK:
-        print("printing edges", edges)
     # starting vertex
     source = DATA["router_id"]
 
@@ -180,10 +174,6 @@ def recving():
             continue
         else:
             msg = pickle.loads(msg)
-
-            with PRINT_LOCK:
-                print("inside thread receiving")
-                print(type(msg), "\n", msg)
 
             if msg == "is_alive":
                 with PRINT_LOCK:
