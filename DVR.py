@@ -143,6 +143,9 @@ def bellman_ford(vertices, edges, source):
         direct_parent = find_parent_close_to_source(dest, parent)
         if dest in direct_neighbors:
             neighbors[dest][0] = cost
+        # handle one problem with direct parents
+        if dest == direct_parent:
+            direct_parent = parent[dest]
         distance_vec[dest] = [cost, direct_parent]
         forwarding_table[dest] = [cost, direct_parent]
     n_d_vec[source] = distance_vec
