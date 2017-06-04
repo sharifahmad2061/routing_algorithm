@@ -162,6 +162,7 @@ def bellman_ford(vertices, edges, source):
         send_msg = pickle.dumps(distance_vec)
         SOCKET1.sendto(send_msg, ("127.0.0.1", neighbor[1]))
 
+
 def prepare_for_bf(router_id, distance_vector):
     """
     this function prepares data for bellman
@@ -183,18 +184,33 @@ def prepare_for_bf(router_id, distance_vector):
         with PRINT_LOCK:
             print("printing n_d_vec", key, value)
         # value is a 2d array
-        res = {key + local_key: local_value[0] for local_key,
-               local_value in value.items() if local_value[1] == key}
+        res = {}
+        extra = {}
+        for local_key, local_value in value.items():
+            if local_value[1] == key:
+                res.update({key + local_key: local_value[0]})
+            else:
+                extra.update({local_key: local_value})
+        asc_sorted_keys = sorted(extra, extra.get)
+        temp = 0
+        while temp < len(asc_sorted_keys) - 1:
+            temp_edge = {asc_sorted_keys[temp] + asc_sorted_keys[temp + 1]:
+                         extra[asc_sorted_keys[temp + 1]][0] - extra[asc_sorted_keys[temp]][0]}
+            res.update(temp_edge)
+            temp = temp + 1
+        # res = {key + local_key: local_value[0] for local_key,
+        #        local_value in value.items() if local_value[1] == key}
+
         edges.update(res)
     # checking for reverse edge
     edges_to_add = []
     for edge in edges:
-        if edge[1]+edge[0] in edges:
+        if edge[1] + edge[0] in edges:
             continue
         else:
             edges_to_add.append(edge)
     for edge in edges_to_add:
-        temp = dict({edge[1]+edge[0]:edges[edge]})
+        temp = dict({edge[1] + edge[0]: edges[edge]})
         with PRINT_LOCK:
             print("opposite edge :::::: ", temp)
         edges.update(temp)
