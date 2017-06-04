@@ -57,20 +57,24 @@ def current_time():
 
 def find_parent_close_to_source(direct_neighbors, dest, parents_array):
     """finds the parent that is the direct neighbor of source"""
-    with PRINT_LOCK:
-        print("direct neighbors: \n", direct_neighbors)
-        print("dest: \n", dest)
-        print("parent array: \n", parents_array)
+    # with PRINT_LOCK:
+    #     print("direct neighbors: \n", direct_neighbors)
+    #     print("dest: \n", dest)
+    #     print("parent array: \n", parents_array)
     if dest in direct_neighbors:
         if parents_array[dest] in DATA["router_id"]:
+            with PRINT_LOCK:
+                print("returning : ", parents_array[dest])
             return parents_array[dest]
         else:
-            find_parent_close_to_source(
+            return find_parent_close_to_source(
                 direct_neighbors, parents_array[dest], parents_array)
     elif parents_array[dest] in direct_neighbors:
+        with PRINT_LOCK:
+            print("returning : ", parents_array[dest])
         return parents_array[dest]
     else:
-        find_parent_close_to_source(
+        return find_parent_close_to_source(
             direct_neighbors, parents_array[dest], parents_array)
 
 
