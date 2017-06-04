@@ -55,27 +55,33 @@ def current_time():
     return time.time()
 
 
-def find_parent_close_to_source(direct_neighbors, dest, parents_array):
+def find_parent_close_to_source(dest, parents_array):
     """finds the parent that is the direct neighbor of source"""
     # with PRINT_LOCK:
     #     print("direct neighbors: \n", direct_neighbors)
     #     print("dest: \n", dest)
     #     print("parent array: \n", parents_array)
-    if dest in direct_neighbors:
-        if parents_array[dest] in DATA["router_id"]:
-            with PRINT_LOCK:
-                print("returning : ", parents_array[dest])
-            return parents_array[dest]
-        else:
-            return find_parent_close_to_source(
-                direct_neighbors, parents_array[dest], parents_array)
-    elif parents_array[dest] in direct_neighbors:
+    if parents_array[dest] == DATA["router_id"]:
         with PRINT_LOCK:
-            print("returning : ", parents_array[dest])
-        return parents_array[dest]
+            print("returning : ", dest)
+        return dest
     else:
-        return find_parent_close_to_source(
-            direct_neighbors, parents_array[dest], parents_array)
+        return find_parent_close_to_source(parents_array[dest], parents_array)
+    # if dest in direct_neighbors:
+    #     if parents_array[dest] in DATA["router_id"]:
+    #         # with PRINT_LOCK:
+    #         #     print("returning : ", parents_array[dest])
+    #         return parents_array[dest]
+    #     else:
+    #         return find_parent_close_to_source(
+    #             direct_neighbors, parents_array[dest], parents_array)
+    # elif parents_array[dest] in direct_neighbors:
+    #     # with PRINT_LOCK:
+    #     #     print("returning : ", parents_array[dest])
+    #     return parents_array[dest]
+    # else:
+    #     return find_parent_close_to_source(
+    #         direct_neighbors, parents_array[dest], parents_array)
 
 
 def identify_remote_router(remote_address):
@@ -113,7 +119,7 @@ def bellman_ford(vertices, edges, source):
     end_index = len(vertices) - 1
     while start_index < end_index:
         for edge, weight in edges.items():
-            if distance[edge[0]] + weight <= distance[edge[1]]:
+            if distance[edge[0]] + weight < distance[edge[1]]:
                 distance[edge[1]] = distance[edge[0]] + weight
                 parent[edge[1]] = edge[0]
         start_index = start_index + 1
@@ -134,8 +140,7 @@ def bellman_ford(vertices, edges, source):
             print("dest : {} , cost : {} , parent : {}".format(
                 dest, distance[dest], parent[dest]))
         cost = distance[dest]
-        direct_parent = find_parent_close_to_source(
-            direct_neighbors, dest, parent)
+        direct_parent = find_parent_close_to_source(dest, parent)
         if dest in direct_neighbors:
             neighbors[dest][0] = cost
         distance_vec[dest] = [cost, direct_parent]
@@ -293,7 +298,7 @@ def check_if_alive():
     # I need to make timeout variable
     global ALIVE_MSG_QUEUE
     neighbors_gone_dead = list()
-    interval = 10
+    interval = 60
     start = current_time()
     while True:
 
@@ -471,8 +476,8 @@ def main():
     intf_th.start()
 
     # find thread is checking if every router is available/alive
-    find_th = Thread(target=check_if_alive, name="find_th", daemon=True)
-    find_th.start()
+    # find_th = Thread(target=check_if_alive, name="find_th", daemon=True)
+    # find_th.start()
     with PRINT_LOCK:
         print("all threads started")
 
