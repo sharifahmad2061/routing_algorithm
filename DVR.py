@@ -191,7 +191,7 @@ def prepare_for_bf(router_id, distance_vector):
                 res.update({key + local_key: local_value[0]})
             else:
                 extra.update({local_key: local_value})
-        asc_sorted_keys = sorted(extra, extra.get)
+        asc_sorted_keys = sorted(extra, key=extra.get)
         temp = 0
         while temp < len(asc_sorted_keys) - 1:
             temp_edge = {asc_sorted_keys[temp] + asc_sorted_keys[temp + 1]:
